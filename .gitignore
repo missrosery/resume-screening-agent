@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.next/
+node_modules/
+backend/uploads/
+.env
+backend/.env
+frontend/.env
+frontend/.env.local
+frontend/.env.production
+.DS_Store
+Thumbs.db

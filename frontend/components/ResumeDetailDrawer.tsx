@@ -23,12 +23,13 @@ export function ResumeDetailDrawer({
       return;
     }
 
+    const targetResumeId = resumeId;
     let cancelled = false;
     async function load() {
       setLoading(true);
       setError("");
       try {
-        const data = await api.getResume(resumeId);
+        const data = await api.getResume(targetResumeId);
         if (!cancelled) {
           setResume(data);
         }

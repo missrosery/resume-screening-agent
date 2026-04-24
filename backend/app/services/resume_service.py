@@ -4,11 +4,11 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException, UploadFile
-from sqlalchemy import select
+from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.models.database import Resume
+from app.models.database import Resume, ScreeningResult
 from app.rag.resume_parser import resume_parser
 from app.rag.vector_store import resume_vector_store
 
@@ -86,6 +86,9 @@ class ResumeService:
         if not resume:
             return False
 
+        await self.db.execute(delete(ScreeningResult).where(ScreeningResult.resume_id == resume_id))
+        await self._delete_vector_documents(resume_id)
+
         file_path = Path(resume.file_path)
         if file_path.exists():
             try:
@@ -96,3 +99,13 @@ class ResumeService:
         await self.db.delete(resume)
         await self.db.flush()
         return True
+
+    async def _delete_vector_documents(self, resume_id: UUID) -> None:
+        table_exists = await self.db.scalar(text("select to_regclass('public.langchain_pg_embedding')"))
+        if not table_exists:
+            return
+
+        await self.db.execute(
+            text("delete from langchain_pg_embedding where cmetadata ->> 'resume_id' = :resume_id"),
+            {"resume_id": str(resume_id)},
+        )

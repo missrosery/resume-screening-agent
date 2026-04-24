@@ -29,6 +29,10 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   getPosition: (positionId: string) => request<Position>(`/positions/${positionId}`),
+  deletePosition: (positionId: string) =>
+    request<void>(`/positions/${positionId}`, {
+      method: "DELETE",
+    }),
   getResume: (resumeId: string) => request<Resume>(`/resumes/${resumeId}`),
   uploadResumes: async (positionId: string, files: File[]) => {
     const form = new FormData();

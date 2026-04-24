@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infrastructure.database import get_db
@@ -36,3 +36,14 @@ async def get_position(
     if not position:
         raise HTTPException(status_code=404, detail="Position not found")
     return PositionResponse.model_validate(position)
+
+
+@router.delete("/{position_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_position(
+    position_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    deleted = await PositionService(db).delete(position_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Position not found")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

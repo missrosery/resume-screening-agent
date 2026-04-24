@@ -2,39 +2,38 @@
 
 # Resume Screening Agent
 
-AI recruiting assistant for resume parsing, candidate screening, comparison, and interview question generation.
+AI recruiting assistant for resume parsing, candidate screening, candidate comparison, and interview question generation.
 
-[中文文档](README.zh-CN.md)
+[Live Demo](https://hx-code.xyz) · [中文文档](README.zh-CN.md)
 
 </div>
 
 ## Overview
 
-Resume Screening Agent is a full-stack AI recruiting assistant that combines:
+Resume Screening Agent is a full-stack recruiting workflow application built around a practical hiring loop:
 
-- structured resume parsing
-- vector retrieval and reranking
-- candidate comparison
-- grouped interview question generation
-- lightweight agent-style interaction
+1. upload resumes
+2. extract and structure candidate data
+3. retrieve and rerank candidates against a position or free-form query
+4. compare shortlisted candidates
+5. generate grouped interview questions
+6. continue the workflow through lightweight agent-style interaction
 
-It is designed around a practical hiring workflow: upload resumes, parse candidate profiles, screen against a JD, compare shortlisted candidates, and continue the process through natural language interactions.
+The project focuses on explainable screening output rather than generic chat responses.
 
 ## Screenshots
 
-> Replace the placeholders below with actual screenshots. Suggested location: `docs/images/`.
-
 ### Position And Resume Management
 
-![Position Page Placeholder](docs/images/position-page.png)
+![Position Page](docs/images/position-page.png)
 
-### Screening Result
+### Screening Results, Comparison, And Interview Questions
 
-![Screening Result Placeholder](docs/images/screening-result.png)
+![Screening Result](docs/images/screening-result.png)
 
 ### Agent Chat
 
-![Agent Chat Placeholder](docs/images/agent-chat.png)
+![Agent Chat](docs/images/agent-chat.png)
 
 ## Architecture
 
@@ -46,7 +45,7 @@ flowchart TD
     C --> E["Summary / Experience Documents"]
     E --> F["pgvector Index"]
 
-    G["JD / Screening Query"] --> H["Query Augmentation"]
+    G["Position Requirements / Screening Query"] --> H["Query Augmentation"]
     H --> I["Vector Recall"]
     I --> J["Candidate Deduplication"]
     J --> K["LLM Rerank"]
@@ -63,15 +62,16 @@ flowchart TD
 
 ### Resume Parsing
 
-- Upload PDF / DOCX resumes
-- Extract text and normalize invalid characters
+- Upload PDF and DOCX resumes
+- Extract raw text and sanitize invalid control characters
 - Parse structured candidate data with an LLM
-- Store structured fields and retrieval documents
+- Store structured resume data and vector retrieval documents
 
 Structured fields include:
 
 - name
-- phone / email
+- phone
+- email
 - city
 - job intention
 - education
@@ -88,15 +88,12 @@ Structured fields include:
 - pgvector recall
 - Candidate deduplication
 - LLM reranking
-- Explainable output with:
-  - `match_score`
-  - `match_reasons`
-  - `weaknesses`
+- Explainable output with `match_score`, `match_reasons`, and `weaknesses`
 
 ### Candidate Comparison
 
 - Compare two selected candidates
-- Prefer real names in comparison output
+- Preserve real candidate names in comparison output
 - Support follow-up references in agent chat
 
 ### Interview Question Generation
@@ -109,12 +106,9 @@ Structured fields include:
 
 ### Agent Interaction
 
-- Natural language search / compare / question generation
-- Lightweight session memory
-- Support references such as:
-  - the first candidate
-  - the first two candidates
-  - candidate B
+- Natural language search, comparison, and interview-question generation
+- Lightweight session memory for recently referenced candidates
+- Support references such as `the first candidate`, `the first two candidates`, and `candidate B`
 
 ## Tech Stack
 
@@ -123,7 +117,7 @@ Structured fields include:
 - Next.js 14
 - React 18
 - TypeScript
-- TailwindCSS
+- Tailwind CSS
 
 ### Backend
 
@@ -137,6 +131,33 @@ Structured fields include:
 - DashScope / Qwen
 - OpenAI-compatible client
 - LangChain PGVector
+
+## API Overview
+
+### Positions
+
+- `POST /positions`
+- `GET /positions`
+- `GET /positions/{id}`
+- `DELETE /positions/{id}`
+
+### Resumes
+
+- `POST /positions/{position_id}/resumes/upload`
+- `GET /positions/{position_id}/resumes`
+- `GET /resumes/{resume_id}`
+- `DELETE /resumes/{resume_id}`
+
+### Screening
+
+- `POST /positions/{position_id}/screen`
+- `POST /resumes/compare`
+- `POST /resumes/{resume_id}/interview-questions`
+
+### Agent
+
+- `POST /positions/{position_id}/sessions`
+- `POST /sessions/{session_id}/chat`
 
 ## Project Structure
 
@@ -157,8 +178,8 @@ frontend/
   components/
   lib/
 
+deploy/
 docs/
-  images/
 ```
 
 ## Local Development
@@ -191,7 +212,7 @@ docker compose up --build
 
 ## Environment
 
-Use [backend/.env.example](backend/.env.example) as the template.
+Use [backend/.env.example](backend/.env.example) as the template for local development.
 
 Important variables:
 
@@ -204,73 +225,26 @@ Important variables:
 - `UPLOAD_DIR`
 - `CORS_ORIGINS`
 
-## API Keys And Self-Hosting
+Production deployment uses:
 
-- This repository does not include any real API keys.
-- When you run your own deployment, you must provide your own `DASHSCOPE_API_KEY`.
-- If you self-host this project, all LLM and embedding usage is billed to your own provider account.
-- Never commit `.env` files or production secrets to the repository.
-- For a public demo, keep the API key on the server side only. Do not expose provider keys in frontend code.
+- [.env.production.example](.env.production.example)
+- [backend/.env.production.example](backend/.env.production.example)
+- [docker-compose.prod.yml](docker-compose.prod.yml)
+- [DEPLOY.md](DEPLOY.md)
 
-## API Overview
+## Deployment
 
-### Positions
+The live deployment uses:
 
-- `POST /positions`
-- `GET /positions`
-- `GET /positions/{id}`
+- Docker Compose for `frontend`, `backend`, and `postgres`
+- host Nginx for reverse proxy and HTTPS
+- Certbot for Let's Encrypt certificates
 
-### Resumes
-
-- `POST /positions/{position_id}/resumes/upload`
-- `GET /positions/{position_id}/resumes`
-- `GET /resumes/{resume_id}`
-- `DELETE /resumes/{resume_id}`
-
-### Screening
-
-- `POST /positions/{position_id}/screen`
-- `POST /resumes/compare`
-- `POST /resumes/{resume_id}/interview-questions`
-
-### Agent
-
-- `POST /positions/{position_id}/sessions`
-- `POST /sessions/{session_id}/chat`
-
-## Demo Flow
-
-1. Create a position
-2. Upload multiple resumes
-3. Review structured parsing results
-4. Run candidate screening from a JD or free-form query
-5. Open candidate detail drawers
-6. Compare candidates
-7. Generate grouped interview questions
-8. Continue through agent chat
-
-## Current Capabilities
-
-- Resume upload and structured parsing
-- Candidate retrieval and reranking
-- Candidate comparison
-- Grouped interview question generation
-- Agent chat with lightweight session memory
-- Resume detail drawer
-- Duplicate upload reuse
-- Resume deletion with immediate UI update
-
-## Roadmap
-
-- Better logging and error classification
-- Minimal automated tests
-- Deployment guide
-- More robust agent context control
-- Real screenshots / GIFs / demo video
+See [DEPLOY.md](DEPLOY.md) for the production deployment flow.
 
 ## Security Notes
 
-- Do not commit real API keys or database passwords
-- Rotate any exposed key during development
-- Replace development credentials before deployment
-- Restrict CORS in production
+- Real API keys and production secrets are not included in this repository.
+- Provider keys must remain server-side only.
+- Exposed development credentials should be rotated immediately.
+- Production CORS should be restricted to trusted origins.

@@ -4,37 +4,36 @@
 
 一个用于简历解析、候选人筛选、候选人对比和面试题生成的 AI 招聘助手。
 
-[English](README.md)
+[Live Demo](https://hx-code.xyz) · [English](README.md)
 
 </div>
 
 ## 项目简介
 
-Resume Screening Agent 是一个面向招聘流程的全栈 AI 应用，围绕以下核心能力构建：
+Resume Screening Agent 是一个面向招聘流程的全栈 AI 应用，围绕一条完整的招聘辅助链路构建：
 
-- 简历结构化解析
-- 向量检索与精排
-- 候选人对比
-- 分组面试题生成
-- 轻量 Agent 式自然语言交互
+1. 上传简历
+2. 提取并结构化候选人信息
+3. 基于岗位需求或自然语言查询召回并精排候选人
+4. 对比候选人
+5. 生成分组面试题
+6. 通过轻量 Agent 交互继续推进筛选流程
 
-它覆盖了一条完整的招聘辅助链路：上传简历、解析候选人信息、基于岗位需求筛选候选人、对比候选人、生成面试题，并支持通过自然语言继续操作。
+项目重点放在“可解释的候选人筛选输出”，而不是通用聊天式回答。
 
 ## 功能截图
 
-> 当前为占位路径，后续可替换为真实截图。建议统一放在 `docs/images/` 目录下。
-
 ### 岗位与简历管理
 
-![Position Page Placeholder](docs/images/position-page.png)
+![Position Page](docs/images/position-page.png)
 
-### 候选人筛选结果
+### 候选人筛选、对比与面试题生成
 
-![Screening Result Placeholder](docs/images/screening-result.png)
+![Screening Result](docs/images/screening-result.png)
 
 ### Agent 对话
 
-![Agent Chat Placeholder](docs/images/agent-chat.png)
+![Agent Chat](docs/images/agent-chat.png)
 
 ## 架构图
 
@@ -63,15 +62,16 @@ flowchart TD
 
 ### 简历解析
 
-- 支持 PDF / DOCX 简历上传
-- 自动提取简历文本并清洗异常字符
+- 支持 PDF 和 DOCX 简历上传
+- 自动提取原始文本并清洗异常控制字符
 - 使用 LLM 输出结构化候选人信息
-- 保存结构化字段和检索文档
+- 保存结构化字段和向量检索文档
 
 结构化字段包括：
 
 - 姓名
-- 电话 / 邮箱
+- 电话
+- 邮箱
 - 城市
 - 求职意向
 - 教育经历
@@ -88,16 +88,13 @@ flowchart TD
 - pgvector 向量召回
 - 候选人去重
 - LLM 精排
-- 输出可解释结果：
-  - `match_score`
-  - `match_reasons`
-  - `weaknesses`
+- 输出可解释结果：`match_score`、`match_reasons`、`weaknesses`
 
 ### 候选人对比
 
 - 支持直接选择两位候选人进行对比
-- 支持在 Agent 对话中通过自然语言发起对比
-- 优先输出真实候选人姓名
+- 对比结果优先保留真实候选人姓名
+- 支持在 Agent 对话中继续引用候选人
 
 ### 面试题生成
 
@@ -109,12 +106,9 @@ flowchart TD
 
 ### Agent 交互
 
-- 支持自然语言搜索、对比、出题
+- 支持自然语言搜索、对比和出题
 - 支持轻量会话记忆
-- 支持类似以下引用方式：
-  - 前两个候选人
-  - 第一个候选人
-  - 候选人 B
+- 支持类似 `前两个候选人`、`第一个候选人`、`候选人 B` 这类引用方式
 
 ## 技术栈
 
@@ -123,7 +117,7 @@ flowchart TD
 - Next.js 14
 - React 18
 - TypeScript
-- TailwindCSS
+- Tailwind CSS
 
 ### Backend
 
@@ -137,6 +131,33 @@ flowchart TD
 - DashScope / Qwen
 - OpenAI-compatible client
 - LangChain PGVector
+
+## API 概览
+
+### Positions
+
+- `POST /positions`
+- `GET /positions`
+- `GET /positions/{id}`
+- `DELETE /positions/{id}`
+
+### Resumes
+
+- `POST /positions/{position_id}/resumes/upload`
+- `GET /positions/{position_id}/resumes`
+- `GET /resumes/{resume_id}`
+- `DELETE /resumes/{resume_id}`
+
+### Screening
+
+- `POST /positions/{position_id}/screen`
+- `POST /resumes/compare`
+- `POST /resumes/{resume_id}/interview-questions`
+
+### Agent
+
+- `POST /positions/{position_id}/sessions`
+- `POST /sessions/{session_id}/chat`
 
 ## 项目结构
 
@@ -157,8 +178,8 @@ frontend/
   components/
   lib/
 
+deploy/
 docs/
-  images/
 ```
 
 ## 本地开发
@@ -191,7 +212,7 @@ docker compose up --build
 
 ## 环境变量
 
-参考 [backend/.env.example](backend/.env.example)。
+本地开发可参考 [backend/.env.example](backend/.env.example)。
 
 关键变量：
 
@@ -204,73 +225,26 @@ docker compose up --build
 - `UPLOAD_DIR`
 - `CORS_ORIGINS`
 
-## API Key 与自部署说明
+生产部署相关文件：
 
-- 仓库中不包含任何真实 API Key。
-- 任何人自行部署本项目时，都需要在自己的环境变量中提供自己的 `DASHSCOPE_API_KEY`。
-- 如果你自己部署并开放访问，产生的 LLM 与 embedding 调用费用由你自己的服务账号承担。
-- 不要把 `.env` 文件或生产密钥提交到仓库。
-- 如果做公开 demo，API Key 必须只保存在服务端，不能暴露在前端代码中。
+- [.env.production.example](.env.production.example)
+- [backend/.env.production.example](backend/.env.production.example)
+- [docker-compose.prod.yml](docker-compose.prod.yml)
+- [DEPLOY.md](DEPLOY.md)
 
-## API 概览
+## 部署说明
 
-### Positions
+线上部署使用以下结构：
 
-- `POST /positions`
-- `GET /positions`
-- `GET /positions/{id}`
+- Docker Compose 运行 `frontend`、`backend`、`postgres`
+- 宿主机 Nginx 负责反向代理和 HTTPS
+- Certbot 负责 Let's Encrypt 证书签发与续期
 
-### Resumes
-
-- `POST /positions/{position_id}/resumes/upload`
-- `GET /positions/{position_id}/resumes`
-- `GET /resumes/{resume_id}`
-- `DELETE /resumes/{resume_id}`
-
-### Screening
-
-- `POST /positions/{position_id}/screen`
-- `POST /resumes/compare`
-- `POST /resumes/{resume_id}/interview-questions`
-
-### Agent
-
-- `POST /positions/{position_id}/sessions`
-- `POST /sessions/{session_id}/chat`
-
-## 演示流程建议
-
-1. 创建岗位
-2. 上传多份简历
-3. 查看结构化解析结果
-4. 输入岗位需求，得到候选人筛选结果
-5. 打开候选人详情抽屉
-6. 对比两位候选人
-7. 生成分组面试题
-8. 进入 Agent 页面继续自然语言交互
-
-## 当前能力
-
-- 简历上传与结构化解析
-- 候选人检索与精排
-- 候选人对比
-- 分组面试题生成
-- Agent 对话与轻量会话记忆
-- 候选人详情抽屉
-- 重复简历复用
-- 简历删除与前端即时更新
-
-## 后续计划
-
-- 更完整的日志与错误分层
-- 最小自动化测试集
-- 部署说明
-- 更稳的 Agent 上下文控制
-- 真实截图 / GIF / 演示视频
+生产部署流程见 [DEPLOY.md](DEPLOY.md)。
 
 ## 安全说明
 
-- 不要提交真实 API Key 或数据库密码
-- 若开发阶段泄露过密钥，务必立即轮换
-- 部署前请替换开发环境默认凭证
-- 生产环境应收紧 CORS 配置
+- 仓库中不包含任何真实 API Key 或生产密钥。
+- Provider Key 只能保存在服务端，不能暴露在前端。
+- 开发阶段若泄露过凭据，应立即轮换。
+- 生产环境应将 CORS 收紧到可信来源。

@@ -15,6 +15,8 @@ async def create_position(
     body: PositionCreate,
     db: AsyncSession = Depends(get_db),
 ) -> PositionResponse:
+    # 接口层只负责“收请求、调服务、返回响应”。
+    # 真正的数据库写入放在 PositionService，避免接口函数变得很臃肿。
     position = await PositionService(db).create(body)
     return PositionResponse.model_validate(position)
 
@@ -32,6 +34,8 @@ async def get_position(
     position_id: UUID,
     db: AsyncSession = Depends(get_db),
 ) -> PositionResponse:
+    # 路径参数 position_id 会被 FastAPI 自动转换成 UUID。
+    # 如果数据库里查不到，就返回标准的 404，前端可以据此提示“岗位不存在”。
     position = await PositionService(db).get(position_id)
     if not position:
         raise HTTPException(status_code=404, detail="Position not found")
@@ -43,6 +47,8 @@ async def delete_position(
     position_id: UUID,
     db: AsyncSession = Depends(get_db),
 ) -> Response:
+    # 删除岗位不是只删 job_positions 一行，还要清理关联简历、筛选结果、
+    # 向量库里的文档和本地上传文件，所以交给服务层统一处理。
     deleted = await PositionService(db).delete(position_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Position not found")

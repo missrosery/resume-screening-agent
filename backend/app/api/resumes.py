@@ -21,6 +21,8 @@ async def upload_resumes(
     files: list[UploadFile] = File(...),
     db: AsyncSession = Depends(get_db),
 ) -> list[ResumeResponse]:
+    # 上传简历必须绑定到某个岗位，因为后续筛选会在“某个岗位下的候选人”
+    # 这个范围里做召回和排序。
     position = await PositionService(db).get(position_id)
     if not position:
         raise HTTPException(status_code=404, detail="Position not found")
@@ -29,6 +31,8 @@ async def upload_resumes(
     resumes = await service.upload_and_parse(position_id, files)
     responses = []
     for item, duplicate in resumes:
+        # duplicate 不是数据库字段，而是本次上传接口额外告诉前端的信息：
+        # True 表示这个文件之前已经上传过，不需要重复解析和入库。
         payload = ResumeResponse.model_validate(item).model_dump()
         payload["duplicate"] = duplicate
         responses.append(ResumeResponse.model_validate(payload))

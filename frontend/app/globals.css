@@ -4,21 +4,104 @@
 
 :root {
   color-scheme: light;
+  --background: #fafafa;
+  --foreground: #0f0f1a;
+  --card: #ffffff;
+  --card-foreground: #0f0f1a;
+  --popover: #ffffff;
+  --popover-foreground: #0f0f1a;
+  --primary: #4f46e5;
+  --primary-foreground: #ffffff;
+  --secondary: #f1f5f9;
+  --secondary-foreground: #0f0f1a;
+  --muted: #f1f5f9;
+  --muted-foreground: #6b7280;
+  --accent: #f1f5f9;
+  --accent-foreground: #0f0f1a;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: #e2e8f0;
+  --input: #e2e8f0;
+  --ring: #4f46e5;
+  --radius: 0.75rem;
 }
 
-body {
-  @apply bg-sand text-ink;
-  font-family: Georgia, "Times New Roman", serif;
+.dark {
+  color-scheme: dark;
+  --background: #0a0a0f;
+  --foreground: #f0f0f5;
+  --card: #13131f;
+  --card-foreground: #f0f0f5;
+  --popover: #13131f;
+  --popover-foreground: #f0f0f5;
+  --primary: #6366f1;
+  --primary-foreground: #ffffff;
+  --secondary: #1e1e2d;
+  --secondary-foreground: #f0f0f5;
+  --muted: #1e1e2d;
+  --muted-foreground: #a1a1aa;
+  --accent: #1e1e2d;
+  --accent-foreground: #f0f0f5;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: #27273a;
+  --input: #27273a;
+  --ring: #6366f1;
 }
 
-.panel {
-  @apply rounded-2xl border border-slate-200 bg-white p-6 shadow-sm;
+@layer base {
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  * {
+    @apply border-border;
+  }
 }
 
-.input {
-  @apply w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-accent;
-}
+@layer components {
+  .panel {
+    @apply rounded-2xl border border-border bg-card p-6 shadow-card transition-all duration-200;
+  }
 
-.button {
-  @apply inline-flex items-center justify-center rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50;
+  .panel-hover {
+    @apply hover:-translate-y-0.5 hover:shadow-elevated;
+  }
+
+  .input {
+    @apply w-full rounded-xl border border-input bg-background px-4 py-3 text-sm outline-none transition-all duration-200 placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-ring;
+  }
+
+  .button {
+    @apply inline-flex items-center justify-center rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground shadow-subtle transition-all duration-200 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50;
+
+    &:hover {
+      filter: brightness(1.1);
+      box-shadow: 0 4px 14px 0 rgb(79 70 229 / 0.25);
+    }
+  }
+
+  .dark .button:hover {
+    box-shadow: 0 4px 14px 0 rgb(99 102 241 / 0.25);
+  }
+
+  .button-secondary {
+    @apply inline-flex items-center justify-center rounded-xl border border-border bg-secondary px-5 py-2.5 text-sm font-medium text-secondary-foreground transition-all duration-200 hover:bg-muted active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      var(--muted) 25%,
+      var(--card) 50%,
+      var(--muted) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 2s linear infinite;
+  }
 }

@@ -9,5 +9,10 @@ backend/.env
 frontend/.env
 frontend/.env.local
 frontend/.env.production
+docs/backend-learning-notes.zh-CN.md
+docs/career-pitch.zh-CN.md
+.codebuddy/
+.vscode/
+*.tsbuildinfo
 .DS_Store
 Thumbs.db

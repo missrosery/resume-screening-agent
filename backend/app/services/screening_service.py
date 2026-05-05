@@ -41,6 +41,8 @@ class ScreeningService:
         self.db = db
 
     async def create_session(self, position_id: UUID, title: str) -> ScreeningSession:
+        # 创建一条对话会话记录。当前聊天上下文存在内存里，
+        # 数据库中的 session 主要用来标识“这是哪个岗位下的一次对话”。
         session = ScreeningSession(position_id=position_id, title=title)
         self.db.add(session)
         await self.db.flush()
@@ -51,6 +53,8 @@ class ScreeningService:
         return await self.db.get(ScreeningSession, session_id)
 
     async def screen_position(self, position_id: UUID, body: ScreeningRequest) -> list[RankedResume]:
+        # ScreeningService 不直接写检索逻辑，而是委托给 ResumeSearcher。
+        # 这样筛选入口保持简单，RAG 召回和 LLM 精排集中在 rag/resume_searcher.py。
         searcher = ResumeSearcher(self.db)
         return await searcher.search(
             query=body.query,
@@ -61,6 +65,8 @@ class ScreeningService:
         )
 
     async def compare_resumes(self, body: ResumeCompareRequest) -> ResumeCompareResponse:
+        # 对比功能的输入是两份简历 ID。服务层先查数据库，
+        # 再把两份 parsed_data 拼进提示词，让 LLM 输出对比结论。
         resume_a = await self.db.get(Resume, body.resume_id_a)
         resume_b = await self.db.get(Resume, body.resume_id_b)
         if not resume_a or not resume_b:
@@ -79,6 +85,8 @@ class ScreeningService:
         return ResumeCompareResponse(summary=content)
 
     async def generate_interview_questions(self, resume_id: UUID) -> InterviewQuestionsResponse:
+        # 出题功能依赖结构化简历 parsed_data，而不是原始 PDF。
+        # 这样提示词更短，模型更容易按技能、项目、经历生成针对性问题。
         resume = await self.db.get(Resume, resume_id)
         if not resume:
             raise HTTPException(status_code=404, detail="Resume not found")
@@ -89,6 +97,8 @@ class ScreeningService:
             )
             items = self._normalize_question_items(data)
         except Exception:
+            # LLM 调用失败或返回格式不对时，使用兜底题目。
+            # 这是简历项目里很值得讲的“降级策略”：外部 AI 不稳定，业务仍能返回结果。
             items = [
                 InterviewQuestionItem(question="请介绍你最有代表性的一个项目，并说明你的具体职责。", category="项目复盘"),
                 InterviewQuestionItem(question="你在过往经历中如何定位和解决复杂问题？", category="行为判断"),
@@ -103,6 +113,8 @@ class ScreeningService:
         )
 
     def _normalize_question_items(self, data: object) -> list[InterviewQuestionItem]:
+        # LLM 不一定完全听话：可能返回字符串数组，也可能返回对象数组。
+        # 这里把多种返回形式统一整理成 InterviewQuestionItem。
         if not isinstance(data, list):
             raise ValueError("Interview questions payload must be a list")
 
@@ -131,6 +143,7 @@ class ScreeningService:
         return items
 
     def _normalize_category(self, category: str | None) -> str:
+        # 把模型可能输出的同义分类统一成前端认可的三个分类。
         mapping = {
             "技术深挖": "技术深挖",
             "技术": "技术深挖",
@@ -149,6 +162,8 @@ class ScreeningService:
         return "技术深挖"
 
     def _group_question_items(self, items: list[InterviewQuestionItem]) -> list[InterviewQuestionGroup]:
+        # 前端既需要完整 questions 列表，也需要按分类分组后的 groups。
+        # 这里固定分组顺序，让页面展示更稳定。
         ordered_categories = ["技术深挖", "项目复盘", "行为判断"]
         groups: list[InterviewQuestionGroup] = []
         for category in ordered_categories:

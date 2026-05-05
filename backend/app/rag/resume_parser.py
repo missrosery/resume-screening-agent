@@ -19,6 +19,8 @@ RESUME_PARSE_SYSTEM_PROMPT = """
 
 @dataclass
 class ResumeParseResult:
+    # dataclass 用来打包解析结果，比返回 tuple 更清楚：
+    # raw_text 是原文，parsed_data 是结构化字段，documents 是要写入向量库的文本块。
     raw_text: str
     parsed_data: ParsedResumeData
     documents: list[Document]
@@ -26,6 +28,8 @@ class ResumeParseResult:
 
 class ResumeParser:
     async def parse(self, file_path: Path, file_type: str, resume_id: UUID, position_id: UUID) -> ResumeParseResult:
+        # 一份简历进入系统后的核心处理流程：
+        # 提取文本 -> 清洗文本 -> LLM 结构化解析 -> 构造向量检索文档。
         raw_text = self.sanitize_text(await self.extract_text(file_path, file_type))
         parsed = await llm_client.complete_json(
             RESUME_PARSE_SYSTEM_PROMPT,
@@ -36,6 +40,8 @@ class ResumeParser:
         return ResumeParseResult(raw_text=raw_text, parsed_data=parsed, documents=documents)
 
     async def extract_text(self, file_path: Path, file_type: str) -> str:
+        # PDF 和 DOCX 的底层格式不同，所以使用不同库提取文本。
+        # 提取结果只是普通字符串，后续统一交给 LLM 解析。
         if file_type == "pdf":
             with pdfplumber.open(file_path) as pdf:
                 return "\n".join(page.extract_text() or "" for page in pdf.pages).strip()
@@ -45,7 +51,7 @@ class ResumeParser:
         raise ValueError("Unsupported file type")
 
     def sanitize_text(self, text: str) -> str:
-        # Resume exports often include NUL bytes and invisible control chars that break DB writes.
+        # 简历导出工具可能产生 NUL 字节和不可见控制字符，这些字符容易导致数据库写入失败。
         cleaned = text.replace("\x00", "")
         cleaned = re.sub(r"[\x01-\x08\x0b\x0c\x0e-\x1f\x7f]", "", cleaned)
         cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
@@ -58,6 +64,8 @@ class ResumeParser:
         resume_id: UUID,
         position_id: UUID,
     ) -> list[Document]:
+        # 向量库不是存整份简历 PDF，而是存“适合检索的文本块”。
+        # 第一块是候选人摘要和技能，后面每段工作经历单独成块，召回会更精确。
         docs = [
             Document(
                 page_content=(

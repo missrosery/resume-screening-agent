@@ -18,6 +18,8 @@ class ResumeService:
         self.db = db
 
     async def upload_and_parse(self, position_id: UUID, files: list[UploadFile]) -> list[tuple[Resume, bool]]:
+        # 返回值里的 bool 表示“是否重复上传”。
+        # 这样前端可以告诉用户：这个文件已存在，本次没有重复解析。
         uploads: list[tuple[Resume, bool]] = []
         for file in files:
             ext = Path(file.filename or "").suffix.lower().lstrip(".")
@@ -27,6 +29,8 @@ class ResumeService:
             target_dir = settings.upload_path / str(position_id)
             target_dir.mkdir(parents=True, exist_ok=True)
             content = await file.read()
+            # 用文件内容算 hash，比单纯比较文件名更可靠：
+            # 同一份简历即使改了文件名，hash 仍然相同。
             file_hash = hashlib.sha256(content).hexdigest()
 
             existing = await self._get_existing_by_hash(position_id, file_hash)
@@ -49,12 +53,18 @@ class ResumeService:
             await self.db.flush()
 
             try:
+                # 解析分三步：
+                # 1. 从 PDF/DOCX 提取文本；
+                # 2. 调 LLM 把文本整理成结构化字段；
+                # 3. 把摘要和经历写入向量库，供后续语义检索。
                 parsed = await resume_parser.parse(target_path, ext, resume.id, position_id)
                 resume.raw_text = parsed.raw_text
                 resume.parsed_data = parsed.parsed_data.model_dump()
                 resume.parse_status = "parsed"
                 await resume_vector_store.add_documents(parsed.documents)
             except Exception as exc:
+                # 单份简历解析失败时，只把状态标记为 failed，
+                # 不让整个批量上传接口直接崩掉，方便前端展示失败原因。
                 resume.parse_status = "failed"
                 resume.parse_error = str(exc)
 
@@ -86,21 +96,27 @@ class ResumeService:
         if not resume:
             return False
 
+        # 删除简历时要同步清理三类数据：
+        # 筛选结果表、向量库文档、本地上传文件。
         await self.db.execute(delete(ScreeningResult).where(ScreeningResult.resume_id == resume_id))
         await self._delete_vector_documents(resume_id)
 
         file_path = Path(resume.file_path)
+        await self.db.delete(resume)
+        await self.db.flush()
+        await self.db.commit()
+
         if file_path.exists():
             try:
                 await asyncio.to_thread(file_path.unlink)
             except Exception:
                 pass
 
-        await self.db.delete(resume)
-        await self.db.flush()
         return True
 
     async def _delete_vector_documents(self, resume_id: UUID) -> None:
+        # 如果项目刚启动还没写过向量，langchain_pg_embedding 表可能不存在。
+        # 先判断表是否存在，可以避免删除时报 SQL 错。
         table_exists = await self.db.scalar(text("select to_regclass('public.langchain_pg_embedding')"))
         if not table_exists:
             return

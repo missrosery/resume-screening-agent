@@ -32,6 +32,8 @@ ROUTER_SYSTEM_PROMPT = """
 
 @dataclass
 class ToolDecision:
+    # Agent 路由后的结果：tool 表示要调用哪个业务工具，
+    # arguments 是该工具需要的参数，例如 query、resume_id_a、recent_index。
     tool: str
     arguments: dict
 
@@ -44,6 +46,8 @@ class ResumeScreeningAgent:
         self.service = ScreeningService(db)
 
     async def route(self, message: str) -> ToolDecision:
+        # 这里不是让 LLM 直接回答用户，而是让 LLM 判断“该调用哪个工具”。
+        # 例如：搜索候选人、对比两人、给某人生成面试题。
         data = await llm_client.complete_json(
             ROUTER_SYSTEM_PROMPT,
             (
@@ -55,6 +59,7 @@ class ResumeScreeningAgent:
         return ToolDecision(tool=data.get("tool", "search_resumes"), arguments=data.get("arguments", {}))
 
     async def _resumes_for_position(self) -> list[Resume]:
+        # Agent 只能在当前岗位下找候选人，并且只找已经解析成功的简历。
         stmt = select(Resume).where(
             Resume.position_id == self.position.id,
             Resume.parse_status == "parsed",
@@ -62,9 +67,13 @@ class ResumeScreeningAgent:
         return list((await self.db.execute(stmt)).scalars().all())
 
     def _recent_candidates(self) -> list[dict]:
+        # 最近一次搜索结果保存在内存里。
+        # 用户后续说“第一个候选人”“刚才前两个”，就靠这里解析。
         return chat_memory.load_candidates(self.session_id)
 
     def _parse_index_token(self, token: str) -> int | None:
+        # 把中文/数字序号转成 Python 列表下标。
+        # 用户说“第一位”，实际代码里对应 index=0。
         mapping = {
             "1": 0,
             "一": 0,
@@ -88,6 +97,10 @@ class ResumeScreeningAgent:
         return None
 
     def _find_recent_by_reference(self, reference: str) -> tuple[dict | None, str | None]:
+        # 支持几种引用方式：
+        # 1. 候选人A / 候选人B；
+        # 2. 第一个 / 第二个；
+        # 3. 直接说候选人姓名或姓名的一部分。
         recent = self._recent_candidates()
         if not recent:
             return None, "当前会话里还没有最近推荐的候选人，请先执行一次候选人搜索。"
@@ -114,6 +127,8 @@ class ResumeScreeningAgent:
         return None, None
 
     async def _resolve_resume_by_name(self, candidate_name: str) -> tuple[Resume | None, str | None]:
+        # 先在最近推荐列表里找，因为用户聊天时最常引用刚才看到的人。
+        # 找不到再遍历当前岗位下的所有已解析简历。
         recent_candidate, recent_error = self._find_recent_by_reference(candidate_name)
         if recent_candidate:
             resume = await self.db.get(Resume, UUID(str(recent_candidate["resume_id"])))
@@ -141,6 +156,9 @@ class ResumeScreeningAgent:
         return None, f"没有找到名为 {candidate_name} 的候选人，请先搜索候选人，或提供更准确的名字。"
 
     async def _resolve_compare_request(self, arguments: dict) -> tuple[ResumeCompareRequest | None, str | None]:
+        # 对比请求可能来自多种说法：
+        # 直接给两个 resume_id、说“对比前两个”、或给两个人名。
+        # 这个函数负责把这些说法统一转换成 ResumeCompareRequest。
         resume_id_a = arguments.get("resume_id_a")
         resume_id_b = arguments.get("resume_id_b")
         if resume_id_a and resume_id_b:
@@ -192,6 +210,8 @@ class ResumeScreeningAgent:
         )
 
     async def _resolve_resume_id(self, arguments: dict) -> tuple[UUID | None, str | None]:
+        # 生成面试题只需要锁定一份简历。
+        # 这里同样支持 resume_id、最近列表序号、候选人姓名三种方式。
         resume_id = arguments.get("resume_id")
         if resume_id:
             try:
@@ -223,15 +243,19 @@ class ResumeScreeningAgent:
         return resume.id, None
 
     async def stream(self, message: str):
+        # stream 是 Agent 的主入口，使用 yield 分多次返回消息。
+        # 前端收到不同 type 后，可以展示思考状态、工具调用、候选人卡片和最终文本。
         yield ScreeningMessage(type="thinking", content="正在分析你的请求")
         try:
             decision = await self.route(message)
         except Exception:
+            # 路由模型失败时，默认把用户消息当作搜索条件。
             decision = ToolDecision(tool="search_resumes", arguments={"query": message})
 
         yield ScreeningMessage(type="tool_call", content=f"调用工具：{decision.tool}")
 
         if decision.tool == "compare_resumes":
+            # 对比工具：先把用户说法解析成两份简历 ID，再调用 ScreeningService。
             compare_request, error = await self._resolve_compare_request(decision.arguments)
             if error or not compare_request:
                 yield ScreeningMessage(type="text", content=error or "无法识别要对比的两位候选人。")
@@ -241,6 +265,7 @@ class ResumeScreeningAgent:
             resume_a = await self.db.get(Resume, compare_request.resume_id_a)
             resume_b = await self.db.get(Resume, compare_request.resume_id_b)
             if resume_a and resume_b:
+                # 保存“候选人A/B”的别名，方便用户下一轮继续追问。
                 chat_memory.save_compare_aliases(
                     self.session_id,
                     {
@@ -257,6 +282,7 @@ class ResumeScreeningAgent:
             return
 
         if decision.tool == "generate_interview_questions":
+            # 出题工具：先定位某一份简历，再按结构化简历生成问题。
             resume_id, error = await self._resolve_resume_id(decision.arguments)
             if error or not resume_id:
                 yield ScreeningMessage(type="text", content=error or "无法识别候选人。")
@@ -271,6 +297,8 @@ class ResumeScreeningAgent:
             yield ScreeningMessage(type="done", content="completed")
             return
 
+        # 默认工具是搜索候选人。搜索结果会写入 chat_memory，
+        # 这样下一轮可以支持“对比刚才前两个”。
         screen = await self.service.screen_position(
             self.position.id,
             ScreeningRequest(

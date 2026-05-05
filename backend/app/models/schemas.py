@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 
 class EducationInfo(BaseModel):
+    # LLM 从简历中提取出的教育经历结构。
     school: str = ""
     degree: str = ""
     major: str = ""
@@ -14,6 +15,7 @@ class EducationInfo(BaseModel):
 
 
 class WorkExperience(BaseModel):
+    # 工作经历结构。responsibilities 是职责，achievements 是成果。
     company: str = ""
     position: str = ""
     duration: str = ""
@@ -22,6 +24,8 @@ class WorkExperience(BaseModel):
 
 
 class ParsedResumeData(BaseModel):
+    # 一份简历最终会被整理成这个结构，并保存到 resumes.parsed_data。
+    # 后续筛选、对比、出题都优先使用这些字段，而不是反复读取 PDF。
     name: str = ""
     phone: str | None = None
     email: str | None = None
@@ -37,12 +41,14 @@ class ParsedResumeData(BaseModel):
 
 
 class PositionCreate(BaseModel):
+    # 创建岗位接口的请求体。
     title: str
     department: str | None = None
     requirements: str | None = None
 
 
 class PositionResponse(BaseModel):
+    # 岗位接口返回给前端的数据结构。
     id: UUID
     title: str
     department: str | None = None
@@ -52,6 +58,7 @@ class PositionResponse(BaseModel):
 
 
 class ResumeResponse(BaseModel):
+    # 简历接口返回给前端的数据结构。
     id: UUID
     position_id: UUID
     file_name: str
@@ -66,6 +73,7 @@ class ResumeResponse(BaseModel):
 
 
 class ScreeningRequest(BaseModel):
+    # 筛选接口的请求体：query 是岗位要求或自然语言筛选条件。
     query: str
     work_years_min: int | None = None
     degree: str | None = None
@@ -73,6 +81,7 @@ class ScreeningRequest(BaseModel):
 
 
 class RankedResume(BaseModel):
+    # 筛选结果里的单个候选人卡片。
     resume_id: str
     name: str
     match_score: int
@@ -134,6 +143,8 @@ class ChatRequest(BaseModel):
 
 
 class ScreeningMessage(BaseModel):
+    # Agent 流式接口的消息格式。
+    # type 告诉前端这条消息该如何展示，data 用来放候选人卡片等结构化数据。
     type: Literal["thinking", "tool_call", "text", "resume_card", "done", "error"]
     content: str = ""
     data: dict | None = None

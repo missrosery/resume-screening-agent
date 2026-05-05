@@ -8,13 +8,18 @@ from sqlalchemy.types import JSON
 
 
 class Base(DeclarativeBase):
+    # 所有 ORM 表模型都继承 Base。
+    # SQLAlchemy 会通过 Base.metadata 收集这些表定义，启动时统一 create_all。
     pass
 
 
+# 本地开发可能用普通 JSON，生产 PostgreSQL 用 JSONB。
+# with_variant 让同一份模型代码可以适配不同数据库方言。
 JSONType = JSON().with_variant(JSONB(), "postgresql")
 
 
 class JobPosition(Base):
+    # 岗位表：一条岗位记录对应前端创建的一个招聘需求。
     __tablename__ = "job_positions"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -27,6 +32,7 @@ class JobPosition(Base):
 
 
 class Resume(Base):
+    # 简历表：保存上传文件信息、解析状态、原始文本和结构化解析结果。
     __tablename__ = "resumes"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -45,6 +51,7 @@ class Resume(Base):
 
 
 class ScreeningSession(Base):
+    # 筛选会话表：记录某个岗位下的一次 Agent 对话。
     __tablename__ = "screening_sessions"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -54,6 +61,8 @@ class ScreeningSession(Base):
 
 
 class ScreeningResult(Base):
+    # 筛选结果表：预留给“把某次筛选结果落库”使用。
+    # 当前筛选接口主要即时返回结果，删除简历/岗位时仍会清理这张表。
     __tablename__ = "screening_results"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

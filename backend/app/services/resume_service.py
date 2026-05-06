@@ -8,6 +8,7 @@ from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.infrastructure.database import AsyncSessionFactory
 from app.models.database import Resume, ScreeningResult
 from app.rag.resume_parser import resume_parser
 from app.rag.vector_store import resume_vector_store
@@ -17,7 +18,7 @@ class ResumeService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
-    async def upload_and_parse(self, position_id: UUID, files: list[UploadFile]) -> list[tuple[Resume, bool]]:
+    async def upload_resumes(self, position_id: UUID, files: list[UploadFile]) -> list[tuple[Resume, bool]]:
         # 返回值里的 bool 表示“是否重复上传”。
         # 这样前端可以告诉用户：这个文件已存在，本次没有重复解析。
         uploads: list[tuple[Resume, bool]] = []
@@ -61,28 +62,42 @@ class ResumeService:
             await self.db.flush()
             await self.db.commit()
             seen_by_hash[file_hash] = resume
-
-            try:
-                # 解析分三步：
-                # 1. 从 PDF/DOCX 提取文本；
-                # 2. 调 LLM 把文本整理成结构化字段；
-                # 3. 把摘要和经历写入向量库，供后续语义检索。
-                parsed = await resume_parser.parse(target_path, ext, resume.id, position_id)
-                resume.raw_text = parsed.raw_text
-                resume.parsed_data = parsed.parsed_data.model_dump()
-                resume.parse_status = "parsed"
-                await resume_vector_store.add_documents(parsed.documents)
-            except Exception as exc:
-                # 单份简历解析失败时，只把状态标记为 failed，
-                # 不让整个批量上传接口直接崩掉，方便前端展示失败原因。
-                resume.parse_status = "failed"
-                resume.parse_error = str(exc)
-
-            await self.db.flush()
-            await self.db.commit()
             uploads.append((resume, False))
 
         return uploads
+
+    @classmethod
+    async def parse_pending_resumes(cls, resume_ids: list[UUID]) -> None:
+        for resume_id in resume_ids:
+            async with AsyncSessionFactory() as session:
+                service = cls(session)
+                await service.parse_resume(resume_id)
+
+    async def parse_resume(self, resume_id: UUID) -> None:
+        resume = await self.db.get(Resume, resume_id)
+        if not resume or resume.parse_status != "parsing":
+            return
+
+        target_path = Path(resume.file_path)
+        try:
+            # 解析分三步：
+            # 1. 从 PDF/DOCX 提取文本；
+            # 2. 调 LLM 把文本整理成结构化字段；
+            # 3. 把摘要和经历写入向量库，供后续语义检索。
+            parsed = await resume_parser.parse(target_path, resume.file_type, resume.id, resume.position_id)
+            resume.raw_text = parsed.raw_text
+            resume.parsed_data = parsed.parsed_data.model_dump()
+            resume.parse_status = "parsed"
+            resume.parse_error = None
+            await resume_vector_store.add_documents(parsed.documents)
+        except Exception as exc:
+            # 单份简历解析失败时，只把状态标记为 failed，
+            # 不让整个批量上传接口直接崩掉，方便前端展示失败原因。
+            resume.parse_status = "failed"
+            resume.parse_error = str(exc)
+
+        await self.db.flush()
+        await self.db.commit()
 
     async def _lock_file_hash(self, position_id: UUID, file_hash: str) -> None:
         await self.db.execute(

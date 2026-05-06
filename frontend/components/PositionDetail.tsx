@@ -155,6 +155,18 @@ export function PositionDetail({ positionId }: { positionId: string }) {
     setIsOpeningAgent(false);
   }, [positionId]);
 
+  useEffect(() => {
+    if (!resumes.some((resume) => resume.parse_status === "parsing")) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      void load();
+    }, 5000);
+
+    return () => window.clearInterval(timer);
+  }, [load, resumes]);
+
   async function handleUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (uploadInFlightRef.current) {
@@ -180,8 +192,8 @@ export function PositionDetail({ positionId }: { positionId: string }) {
       const duplicateCount = uploaded.filter((item) => item.duplicate).length;
       setUploadMessage(
         duplicateCount > 0
-          ? `上传完成，其中 ${duplicateCount} 份为重复简历，系统已直接复用已有解析结果。`
-          : `上传完成，返回 ${uploaded.length} 份记录。`,
+          ? `上传完成，其中 ${duplicateCount} 份为重复简历；其余简历已进入后台解析队列。`
+          : `上传完成，${uploaded.length} 份简历已进入后台解析队列。`,
       );
       await load();
     } catch (err) {

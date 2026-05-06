@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Response, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infrastructure.database import get_db
@@ -18,6 +18,7 @@ router = APIRouter()
 )
 async def upload_resumes(
     position_id: UUID,
+    background_tasks: BackgroundTasks,
     files: list[UploadFile] = File(...),
     db: AsyncSession = Depends(get_db),
 ) -> list[ResumeResponse]:
@@ -28,7 +29,10 @@ async def upload_resumes(
         raise HTTPException(status_code=404, detail="Position not found")
 
     service = ResumeService(db)
-    resumes = await service.upload_and_parse(position_id, files)
+    resumes = await service.upload_resumes(position_id, files)
+    pending_resume_ids = [item.id for item, duplicate in resumes if not duplicate]
+    if pending_resume_ids:
+        background_tasks.add_task(ResumeService.parse_pending_resumes, pending_resume_ids)
     responses = []
     for item, duplicate in resumes:
         # duplicate 不是数据库字段，而是本次上传接口额外告诉前端的信息：

@@ -4,7 +4,7 @@
 
 AI recruiting assistant for resume parsing, candidate screening, candidate comparison, and interview question generation.
 
-[Live Demo](https://hx-code.xyz) · [中文文档](README.zh-CN.md)
+[Live Demo](https://hx-code.xyz) · [Documentation](https://missrosery.github.io/resume-screening-agent/) · [中文文档](README.zh-CN.md)
 
 </div>
 

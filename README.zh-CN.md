@@ -4,7 +4,7 @@
 
 一个用于简历解析、候选人筛选、候选人对比和面试题生成的 AI 招聘助手。
 
-[Live Demo](https://hx-code.xyz) · [English](README.md)
+[Live Demo](https://hx-code.xyz) · [在线文档](https://missrosery.github.io/resume-screening-agent/) · [English](README.md)
 
 </div>
 

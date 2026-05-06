@@ -97,9 +97,21 @@ class ScreeningResponse(BaseModel):
 
 
 class ResumeCompareRequest(BaseModel):
-    resume_id_a: UUID
-    resume_id_b: UUID
+    resume_ids: list[UUID] | None = None
+    resume_id_a: UUID | None = None
+    resume_id_b: UUID | None = None
     criteria: str | None = None
+
+    def selected_resume_ids(self) -> list[UUID]:
+        raw_ids = self.resume_ids or []
+        if not raw_ids and self.resume_id_a and self.resume_id_b:
+            raw_ids = [self.resume_id_a, self.resume_id_b]
+
+        unique_ids: list[UUID] = []
+        for resume_id in raw_ids:
+            if resume_id not in unique_ids:
+                unique_ids.append(resume_id)
+        return unique_ids
 
 
 class ResumeCompareResponse(BaseModel):

@@ -63,11 +63,11 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title }),
     }),
-  compareResumes: (resume_id_a: string, resume_id_b: string, criteria?: string) =>
+  compareResumes: (resume_ids: string[], criteria?: string) =>
     request<{ summary: string }>("/resumes/compare", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ resume_id_a, resume_id_b, criteria }),
+      body: JSON.stringify({ resume_ids, criteria }),
     }),
   interviewQuestions: (resumeId: string) =>
     request<{ questions: string[]; groups: InterviewQuestionGroup[] }>(`/resumes/${resumeId}/interview-questions`, {

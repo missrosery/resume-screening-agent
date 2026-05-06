@@ -19,11 +19,11 @@ from app.models.schemas import (
 from app.rag.resume_searcher import ResumeSearcher
 
 COMPARE_SYSTEM_PROMPT = """
-你是招聘助手。请对两位候选人做简洁对比。
+你是招聘助手。请对多位候选人做简洁对比。
 输出时必须直接使用候选人的真实姓名，不要使用 A、B、候选人A、候选人B 这类代号。
 输出内容包含：
-1. 候选人一的优势
-2. 候选人二的优势
+1. 每位候选人的核心优势
+2. 每位候选人的主要风险或短板
 3. 最终建议及理由
 """
 
@@ -65,22 +65,33 @@ class ScreeningService:
         )
 
     async def compare_resumes(self, body: ResumeCompareRequest) -> ResumeCompareResponse:
-        # 对比功能的输入是两份简历 ID。服务层先查数据库，
-        # 再把两份 parsed_data 拼进提示词，让 LLM 输出对比结论。
-        resume_a = await self.db.get(Resume, body.resume_id_a)
-        resume_b = await self.db.get(Resume, body.resume_id_b)
-        if not resume_a or not resume_b:
+        # 对比功能的输入是一组简历 ID。服务层先查数据库，
+        # 再把 parsed_data 拼进提示词，让 LLM 输出多人对比结论。
+        resume_ids = body.selected_resume_ids()
+        if len(resume_ids) < 2:
+            raise HTTPException(status_code=400, detail="At least two resumes are required")
+
+        resumes: list[Resume] = []
+        for resume_id in resume_ids:
+            resume = await self.db.get(Resume, resume_id)
+            if resume:
+                resumes.append(resume)
+
+        if len(resumes) != len(resume_ids):
             raise HTTPException(status_code=404, detail="Resume not found")
 
-        name_a = (resume_a.parsed_data or {}).get("name") or resume_a.file_name
-        name_b = (resume_b.parsed_data or {}).get("name") or resume_b.file_name
+        resume_blocks = []
+        for index, resume in enumerate(resumes, start=1):
+            name = (resume.parsed_data or {}).get("name") or resume.file_name
+            resume_blocks.append(
+                f"{index}. 姓名：{name}\n简历：{resume.parsed_data}"
+            )
+
         content = await llm_client.complete_text(
             COMPARE_SYSTEM_PROMPT,
             f"对比标准：{body.criteria or '综合匹配度'}\n"
-            f"候选人一姓名：{name_a}\n"
-            f"候选人一简历：{resume_a.parsed_data}\n"
-            f"候选人二姓名：{name_b}\n"
-            f"候选人二简历：{resume_b.parsed_data}",
+            f"候选人数量：{len(resumes)}\n"
+            f"候选人资料：\n{chr(10).join(resume_blocks)}",
         )
         return ResumeCompareResponse(summary=content)
 

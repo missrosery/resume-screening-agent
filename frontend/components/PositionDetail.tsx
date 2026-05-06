@@ -26,6 +26,10 @@ import {
   Clock,
   X,
   User,
+  Plus,
+  MinusCircle,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 
 import { ResumeDetailDrawer } from "@/components/ResumeDetailDrawer";
@@ -40,14 +44,15 @@ import {
 export function PositionDetail({ positionId }: { positionId: string }) {
   const router = useRouter();
   const sessionRequestRef = useRef<Promise<string> | null>(null);
+  const uploadInFlightRef = useRef(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [position, setPosition] = useState<Position | null>(null);
   const [resumes, setResumes] = useState<Resume[]>([]);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<RankedResume[]>([]);
   const [files, setFiles] = useState<File[]>([]);
   const [sessionId, setSessionId] = useState<string>("");
-  const [compareA, setCompareA] = useState("");
-  const [compareB, setCompareB] = useState("");
+  const [compareIds, setCompareIds] = useState<string[]>(["", ""]);
   const [compareResult, setCompareResult] = useState("");
   const [questionResumeId, setQuestionResumeId] = useState("");
   const [questionGroups, setQuestionGroups] = useState<InterviewQuestionGroup[]>([]);
@@ -60,6 +65,7 @@ export function PositionDetail({ positionId }: { positionId: string }) {
   const [latestResumeIds, setLatestResumeIds] = useState<string[]>([]);
   const [detailResumeId, setDetailResumeId] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [isResumeListExpanded, setIsResumeListExpanded] = useState(false);
 
   const resumeStatusMeta = useMemo(
     () => ({
@@ -74,13 +80,25 @@ export function PositionDetail({ positionId }: { positionId: string }) {
     [],
   );
 
-  const candidateResumes = useMemo(
-    () =>
-      resumes.filter(
-        (resume) => resume.parse_status === "parsed" && resume.parsed_data?.name,
-      ),
-    [resumes],
+  const candidateResumes = useMemo(() => {
+    const unique = new Map<string, Resume>();
+    for (const resume of resumes) {
+      if (resume.parse_status !== "parsed" || !resume.parsed_data?.name) {
+        continue;
+      }
+      const key = resume.file_hash || resume.id;
+      if (!unique.has(key)) {
+        unique.set(key, resume);
+      }
+    }
+    return Array.from(unique.values());
+  }, [resumes]);
+
+  const visibleResumes = useMemo(
+    () => (isResumeListExpanded ? resumes : resumes.slice(0, 5)),
+    [isResumeListExpanded, resumes],
   );
+  const selectedCompareCount = compareIds.filter(Boolean).length;
 
   const ensureSession = useCallback(async () => {
     if (sessionRequestRef.current) {
@@ -139,17 +157,25 @@ export function PositionDetail({ positionId }: { positionId: string }) {
 
   async function handleUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (uploadInFlightRef.current) {
+      return;
+    }
+
     setError("");
     if (!files.length) {
       setError("请先选择至少一份 PDF 或 DOCX 简历");
       return;
     }
 
+    uploadInFlightRef.current = true;
     setIsUploading(true);
     setUploadMessage(`正在上传并解析 ${files.length} 份简历，请等待...`);
     try {
       const uploaded = await api.uploadResumes(positionId, files);
       setFiles([]);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
       setLatestResumeIds(uploaded.map((item) => item.id));
       const duplicateCount = uploaded.filter((item) => item.duplicate).length;
       setUploadMessage(
@@ -162,6 +188,7 @@ export function PositionDetail({ positionId }: { positionId: string }) {
       setError(err instanceof Error ? err.message : "Upload failed");
       setUploadMessage("");
     } finally {
+      uploadInFlightRef.current = false;
       setIsUploading(false);
     }
   }
@@ -184,11 +211,17 @@ export function PositionDetail({ positionId }: { positionId: string }) {
   }
 
   async function handleCompare() {
+    const selectedIds = compareIds.filter(Boolean);
+    if (selectedIds.length < 2) {
+      setError("请至少选择两位候选人进行对比");
+      return;
+    }
+
     setError("");
     setIsComparing(true);
     setUploadMessage("正在生成候选人对比结论，请等待...");
     try {
-      const data = await api.compareResumes(compareA, compareB);
+      const data = await api.compareResumes(selectedIds);
       setCompareResult(data.summary);
       setUploadMessage("候选人对比结论已生成。");
     } catch (err) {
@@ -223,8 +256,7 @@ export function PositionDetail({ positionId }: { positionId: string }) {
     setResults((current) =>
       current.filter((item) => item.resume_id !== resumeId),
     );
-    if (compareA === resumeId) setCompareA("");
-    if (compareB === resumeId) setCompareB("");
+    setCompareIds((current) => current.map((item) => (item === resumeId ? "" : item)));
     if (questionResumeId === resumeId) {
       setQuestionResumeId("");
       setQuestionGroups([]);
@@ -245,23 +277,65 @@ export function PositionDetail({ positionId }: { positionId: string }) {
   }
 
   function handlePickForCompare(resumeId: string) {
-    if (!compareA) {
-      setCompareA(resumeId);
-      setUploadMessage("已将该候选人设为对比对象 A。");
-      return;
-    }
-    if (!compareB && compareA !== resumeId) {
-      setCompareB(resumeId);
-      setUploadMessage("已将该候选人设为对比对象 B。");
-      return;
-    }
-    if (compareA === resumeId || compareB === resumeId) {
+    if (compareIds.includes(resumeId)) {
       setUploadMessage("该候选人已经在当前对比列表中。");
       return;
     }
-    setCompareA(resumeId);
-    setCompareB("");
-    setUploadMessage("已重置对比选择，并将该候选人设为对比对象 A。");
+
+    const emptyIndex = compareIds.findIndex((item) => !item);
+    if (emptyIndex >= 0) {
+      setCompareIds((current) =>
+        current.map((item, index) => (index === emptyIndex ? resumeId : item)),
+      );
+      setUploadMessage("已将该候选人加入对比列表。");
+      return;
+    }
+
+    setCompareIds((current) => [...current, resumeId]);
+    setUploadMessage("已新增一个对比对象并加入该候选人。");
+  }
+
+  function updateCompareId(index: number, resumeId: string) {
+    setCompareIds((current) =>
+      current.map((item, itemIndex) => (itemIndex === index ? resumeId : item)),
+    );
+  }
+
+  function addCompareSlot() {
+    setCompareIds((current) => [...current, ""]);
+  }
+
+  function removeCompareSlot(index: number) {
+    setCompareIds((current) => {
+      if (current.length <= 2) {
+        return current.map((item, itemIndex) => (itemIndex === index ? "" : item));
+      }
+      return current.filter((_, itemIndex) => itemIndex !== index);
+    });
+  }
+
+  function resumePreviewText(resume: Resume) {
+    const parsed = resume.parsed_data;
+    if (resume.parse_status === "failed") {
+      return resume.parse_error || "解析失败";
+    }
+    if (resume.parse_status !== "parsed") {
+      return "等待解析结果";
+    }
+    if (!parsed) {
+      return "已解析，但没有返回结构化字段";
+    }
+    if (parsed.summary?.trim()) {
+      return parsed.summary;
+    }
+
+    const details = [
+      parsed.name ? `姓名：${parsed.name}` : "",
+      parsed.highest_degree ? `学历：${parsed.highest_degree}` : "",
+      parsed.work_years != null ? `年限：${parsed.work_years} 年` : "",
+      parsed.skills?.length ? `技能：${parsed.skills.slice(0, 6).join("、")}` : "",
+    ].filter(Boolean);
+    return details.join(" / ") || "已解析，点击查看详情";
   }
 
   async function handleQuickQuestions(resumeId: string) {
@@ -337,8 +411,10 @@ export function PositionDetail({ positionId }: { positionId: string }) {
               <input
                 className="input cursor-pointer file:mr-3 file:rounded-lg file:border-0 file:bg-primary/10 file:px-3 file:py-1 file:text-xs file:font-medium file:text-primary hover:file:bg-primary/20"
                 multiple
+                ref={fileInputRef}
                 type="file"
                 accept=".pdf,.docx"
+                disabled={isUploading}
                 onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
               />
               <button className="button w-full" disabled={isUploading} type="submit">
@@ -361,8 +437,35 @@ export function PositionDetail({ positionId }: { positionId: string }) {
                 {uploadMessage}
               </div>
             ) : null}
-            <div className="mt-5 space-y-3">
-              {resumes.map((resume) => (
+            <div className="mt-5 flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                已上传 {resumes.length} 份简历
+                {!isResumeListExpanded && resumes.length > visibleResumes.length
+                  ? `，当前显示前 ${visibleResumes.length} 份`
+                  : ""}
+              </p>
+              {resumes.length > 5 ? (
+                <button
+                  className="flex items-center gap-1 text-sm text-primary transition-colors hover:text-primary/80"
+                  type="button"
+                  onClick={() => setIsResumeListExpanded((current) => !current)}
+                >
+                  {isResumeListExpanded ? (
+                    <>
+                      <ChevronUp className="h-4 w-4" />
+                      收起列表
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="h-4 w-4" />
+                      展开全部
+                    </>
+                  )}
+                </button>
+              ) : null}
+            </div>
+            <div className="mt-3 space-y-3">
+              {visibleResumes.map((resume) => (
                 <div
                   key={resume.id}
                   className={`group rounded-xl border p-3 transition-all duration-200 ${
@@ -380,9 +483,7 @@ export function PositionDetail({ positionId }: { positionId: string }) {
                         </strong>
                       </div>
                       <p className="mt-2 text-sm text-muted-foreground">
-                        {resume.parsed_data?.summary ||
-                          resume.parse_error ||
-                          "等待解析结果"}
+                        {resumePreviewText(resume)}
                       </p>
                       {latestResumeIds.includes(resume.id) ? (
                         <p className="mt-2 text-xs font-semibold uppercase tracking-[0.2em] text-primary">
@@ -551,30 +652,48 @@ export function PositionDetail({ positionId }: { positionId: string }) {
               </h3>
             </div>
             <div className="space-y-3">
-              <select
-                className="input"
-                value={compareA}
-                onChange={(e) => setCompareA(e.target.value)}
+              {compareIds.map((selectedId, index) => {
+                const selectedByOthers = new Set(
+                  compareIds.filter((item, itemIndex) => item && itemIndex !== index),
+                );
+                return (
+                  <div key={`compare-${index}`} className="flex gap-2">
+                    <select
+                      className="input"
+                      value={selectedId}
+                      onChange={(e) => updateCompareId(index, e.target.value)}
+                    >
+                      <option value="">选择候选人 {index + 1}</option>
+                      {candidateResumes.map((resume) => (
+                        <option
+                          disabled={selectedByOthers.has(resume.id)}
+                          key={resume.id}
+                          value={resume.id}
+                        >
+                          {resume.parsed_data?.name || resume.file_name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:border-red-300 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40"
+                      disabled={compareIds.length <= 2 && !selectedId}
+                      title="移除这个对比对象"
+                      type="button"
+                      onClick={() => removeCompareSlot(index)}
+                    >
+                      <MinusCircle className="h-4 w-4" />
+                    </button>
+                  </div>
+                );
+              })}
+              <button
+                className="flex h-10 items-center justify-center gap-2 rounded-lg border border-dashed border-primary/40 px-3 text-sm font-medium text-primary transition-colors hover:border-primary hover:bg-primary/5"
+                type="button"
+                onClick={addCompareSlot}
               >
-                <option value="">选择候选人 A</option>
-                {candidateResumes.map((resume) => (
-                  <option key={resume.id} value={resume.id}>
-                    {resume.parsed_data?.name || resume.file_name}
-                  </option>
-                ))}
-              </select>
-              <select
-                className="input"
-                value={compareB}
-                onChange={(e) => setCompareB(e.target.value)}
-              >
-                <option value="">选择候选人 B</option>
-                {candidateResumes.map((resume) => (
-                  <option key={resume.id} value={resume.id}>
-                    {resume.parsed_data?.name || resume.file_name}
-                  </option>
-                ))}
-              </select>
+                <Plus className="h-4 w-4" />
+                添加对比人
+              </button>
               <button className="button w-full" type="button" onClick={handleCompare}>
                 {isComparing ? (
                   <span className="flex items-center gap-2">
@@ -591,7 +710,7 @@ export function PositionDetail({ positionId }: { positionId: string }) {
               {isComparing ? (
                 <StatusCard
                   title="正在生成对比结论"
-                  description="系统正在综合两位候选人的经历、技能和岗位匹配度。"
+                  description={`系统正在综合 ${selectedCompareCount} 位候选人的经历、技能和岗位匹配度。`}
                 />
               ) : null}
               {compareResult ? (

@@ -94,8 +94,15 @@ class ResumeSearcher:
             stmt = select(Resume).where(Resume.id.in_([UUID(item) for item in resume_ids]))
             rows = (await self.db.execute(stmt)).scalars().all()
 
-        candidates = []
+        unique_rows: dict[str, Resume] = {}
         for resume in rows:
+            key = resume.file_hash or str(resume.id)
+            current = unique_rows.get(key)
+            if current is None or (current.parse_status != "parsed" and resume.parse_status == "parsed"):
+                unique_rows[key] = resume
+
+        candidates = []
+        for resume in unique_rows.values():
             parsed = resume.parsed_data or {}
             if not self._passes_hard_filters(
                 parsed,

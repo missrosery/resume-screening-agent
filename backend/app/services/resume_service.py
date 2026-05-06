@@ -21,6 +21,7 @@ class ResumeService:
         # 返回值里的 bool 表示“是否重复上传”。
         # 这样前端可以告诉用户：这个文件已存在，本次没有重复解析。
         uploads: list[tuple[Resume, bool]] = []
+        seen_by_hash: dict[str, Resume] = {}
         for file in files:
             ext = Path(file.filename or "").suffix.lower().lstrip(".")
             if ext not in {"pdf", "docx"}:
@@ -33,9 +34,16 @@ class ResumeService:
             # 同一份简历即使改了文件名，hash 仍然相同。
             file_hash = hashlib.sha256(content).hexdigest()
 
+            if file_hash in seen_by_hash:
+                uploads.append((seen_by_hash[file_hash], True))
+                continue
+
+            await self._lock_file_hash(position_id, file_hash)
             existing = await self._get_existing_by_hash(position_id, file_hash)
             if existing:
+                seen_by_hash[file_hash] = existing
                 uploads.append((existing, True))
+                await self.db.commit()
                 continue
 
             target_path = target_dir / f"{uuid4()}_{file.filename}"
@@ -51,6 +59,8 @@ class ResumeService:
             )
             self.db.add(resume)
             await self.db.flush()
+            await self.db.commit()
+            seen_by_hash[file_hash] = resume
 
             try:
                 # 解析分三步：
@@ -68,10 +78,17 @@ class ResumeService:
                 resume.parse_status = "failed"
                 resume.parse_error = str(exc)
 
+            await self.db.flush()
+            await self.db.commit()
             uploads.append((resume, False))
 
-        await self.db.flush()
         return uploads
+
+    async def _lock_file_hash(self, position_id: UUID, file_hash: str) -> None:
+        await self.db.execute(
+            text("select pg_advisory_xact_lock(hashtext(:lock_key)::bigint)"),
+            {"lock_key": f"resume-upload:{position_id}:{file_hash}"},
+        )
 
     async def _get_existing_by_hash(self, position_id: UUID, file_hash: str) -> Resume | None:
         stmt = select(Resume).where(
@@ -86,7 +103,17 @@ class ResumeService:
             .where(Resume.position_id == position_id)
             .order_by(Resume.created_at.desc())
         )
-        return list((await self.db.execute(stmt)).scalars().all())
+        rows = list((await self.db.execute(stmt)).scalars().all())
+        return self._dedupe_by_file_hash(rows)
+
+    def _dedupe_by_file_hash(self, resumes: list[Resume]) -> list[Resume]:
+        deduped: dict[str, Resume] = {}
+        for resume in resumes:
+            key = resume.file_hash or str(resume.id)
+            current = deduped.get(key)
+            if current is None or (current.parse_status != "parsed" and resume.parse_status == "parsed"):
+                deduped[key] = resume
+        return list(deduped.values())
 
     async def get(self, resume_id: UUID) -> Resume | None:
         return await self.db.get(Resume, resume_id)

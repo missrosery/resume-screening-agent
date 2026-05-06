@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class EducationInfo(BaseModel):
@@ -42,9 +42,17 @@ class ParsedResumeData(BaseModel):
 
 class PositionCreate(BaseModel):
     # 创建岗位接口的请求体。
-    title: str
-    department: str | None = None
-    requirements: str | None = None
+    title: str = Field(min_length=1, max_length=200)
+    department: str | None = Field(default=None, max_length=100)
+    requirements: str | None = Field(default=None, max_length=8000)
+
+    @field_validator("title")
+    @classmethod
+    def title_must_not_be_blank(cls, value: str) -> str:
+        title = value.strip()
+        if not title:
+            raise ValueError("Position title cannot be blank")
+        return title
 
 
 class PositionResponse(BaseModel):
@@ -74,10 +82,18 @@ class ResumeResponse(BaseModel):
 
 class ScreeningRequest(BaseModel):
     # 筛选接口的请求体：query 是岗位要求或自然语言筛选条件。
-    query: str
-    work_years_min: int | None = None
-    degree: str | None = None
-    top_n: int = 5
+    query: str = Field(min_length=1, max_length=2000)
+    work_years_min: int | None = Field(default=None, ge=0, le=80)
+    degree: str | None = Field(default=None, max_length=50)
+    top_n: int = Field(default=5, ge=1, le=20)
+
+    @field_validator("query")
+    @classmethod
+    def query_must_not_be_blank(cls, value: str) -> str:
+        query = value.strip()
+        if not query:
+            raise ValueError("Screening query cannot be blank")
+        return query
 
 
 class RankedResume(BaseModel):
@@ -97,10 +113,10 @@ class ScreeningResponse(BaseModel):
 
 
 class ResumeCompareRequest(BaseModel):
-    resume_ids: list[UUID] | None = None
+    resume_ids: list[UUID] | None = Field(default=None, max_length=10)
     resume_id_a: UUID | None = None
     resume_id_b: UUID | None = None
-    criteria: str | None = None
+    criteria: str | None = Field(default=None, max_length=1000)
 
     def selected_resume_ids(self) -> list[UUID]:
         raw_ids = self.resume_ids or []
@@ -139,7 +155,15 @@ class InterviewQuestionLLMItem(BaseModel):
 
 
 class ScreeningSessionCreate(BaseModel):
-    title: str = "New Session"
+    title: str = Field(default="New Session", min_length=1, max_length=200)
+
+    @field_validator("title")
+    @classmethod
+    def title_must_not_be_blank(cls, value: str) -> str:
+        title = value.strip()
+        if not title:
+            raise ValueError("Session title cannot be blank")
+        return title
 
 
 class ScreeningSessionResponse(BaseModel):
@@ -151,7 +175,15 @@ class ScreeningSessionResponse(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    message: str
+    message: str = Field(min_length=1, max_length=2000)
+
+    @field_validator("message")
+    @classmethod
+    def message_must_not_be_blank(cls, value: str) -> str:
+        message = value.strip()
+        if not message:
+            raise ValueError("Chat message cannot be blank")
+        return message
 
 
 class ScreeningMessage(BaseModel):

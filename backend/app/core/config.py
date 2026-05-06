@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     llm_model: str = Field(default="qwen-plus", alias="LLM_MODEL")
     embedding_model: str = Field(default="text-embedding-v4", alias="EMBEDDING_MODEL")
     upload_dir: str = Field(default="./uploads", alias="UPLOAD_DIR")
+    max_upload_file_size: int = Field(default=10 * 1024 * 1024, alias="MAX_UPLOAD_FILE_SIZE")
     cors_origins_raw: str = Field(default="http://localhost:3000", alias="CORS_ORIGINS")
     vector_collection_name: str = Field(
         default="resume_documents",

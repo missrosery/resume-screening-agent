@@ -6,6 +6,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.resume_screener import ResumeScreeningAgent
+from app.core.logger import logger
 from app.infrastructure.database import get_db
 from app.models.schemas import (
     ChatRequest,
@@ -13,6 +14,7 @@ from app.models.schemas import (
     ResumeCompareRequest,
     ResumeCompareResponse,
     ScreeningRequest,
+    ScreeningMessage,
     ScreeningResponse,
     ScreeningSessionCreate,
     ScreeningSessionResponse,
@@ -99,8 +101,13 @@ async def chat(
     agent = ResumeScreeningAgent(db=db, position=position, session_id=session_id)
 
     async def event_stream():
-        async for message in agent.stream(body.message):
-            # ensure_ascii=False 可以保留中文，不把中文转成 \u4e2d 这类转义字符。
-            yield json.dumps(message.model_dump(), ensure_ascii=False) + "\n"
+        try:
+            async for message in agent.stream(body.message):
+                # ensure_ascii=False 可以保留中文，不把中文转成 \u4e2d 这类转义字符。
+                yield json.dumps(message.model_dump(), ensure_ascii=False) + "\n"
+        except Exception as exc:
+            logger.exception("chat_stream_failed", session_id=str(session_id), error=str(exc))
+            error_message = ScreeningMessage(type="error", content="对话处理失败，请稍后重试或换一个问题。")
+            yield json.dumps(error_message.model_dump(), ensure_ascii=False) + "\n"
 
     return StreamingResponse(event_stream(), media_type="application/x-ndjson")

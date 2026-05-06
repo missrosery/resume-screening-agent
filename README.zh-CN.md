@@ -204,6 +204,16 @@ npm install
 npm run dev
 ```
 
+### 后端测试
+
+```powershell
+cd E:\code\ai-agent-resume\backend
+pip install -r requirements-dev.txt
+pytest
+```
+
+当前测试覆盖请求参数校验、上传异常处理、简历文本清洗、向量文档构造、LLM 对比失败降级和统一错误响应。
+
 ### 方式二：Docker Compose
 
 ```bash
@@ -223,6 +233,7 @@ docker compose up --build
 - `LLM_MODEL`
 - `EMBEDDING_MODEL`
 - `UPLOAD_DIR`
+- `MAX_UPLOAD_FILE_SIZE`
 - `CORS_ORIGINS`
 
 生产部署相关文件：

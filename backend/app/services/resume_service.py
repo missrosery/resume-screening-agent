@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
-from pathlib import Path
+import re
+from pathlib import Path, PurePosixPath
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException, UploadFile
@@ -13,6 +14,8 @@ from app.models.database import Resume, ScreeningResult
 from app.rag.resume_parser import resume_parser
 from app.rag.vector_store import resume_vector_store
 
+ALLOWED_RESUME_EXTENSIONS = {"pdf", "docx"}
+
 
 class ResumeService:
     def __init__(self, db: AsyncSession) -> None:
@@ -21,16 +24,25 @@ class ResumeService:
     async def upload_resumes(self, position_id: UUID, files: list[UploadFile]) -> list[tuple[Resume, bool]]:
         # 返回值里的 bool 表示“是否重复上传”。
         # 这样前端可以告诉用户：这个文件已存在，本次没有重复解析。
+        if not files:
+            raise HTTPException(status_code=400, detail="At least one resume file is required")
+
         uploads: list[tuple[Resume, bool]] = []
         seen_by_hash: dict[str, Resume] = {}
         for file in files:
-            ext = Path(file.filename or "").suffix.lower().lstrip(".")
-            if ext not in {"pdf", "docx"}:
-                raise HTTPException(status_code=400, detail=f"Unsupported file type: {ext}")
+            safe_filename = self._safe_filename(file.filename)
+            ext = Path(safe_filename).suffix.lower().lstrip(".")
+            if ext not in ALLOWED_RESUME_EXTENSIONS:
+                raise HTTPException(status_code=400, detail="Unsupported file type. Please upload PDF or DOCX.")
 
             target_dir = settings.upload_path / str(position_id)
             target_dir.mkdir(parents=True, exist_ok=True)
             content = await file.read()
+            if not content:
+                raise HTTPException(status_code=400, detail=f"Uploaded file is empty: {safe_filename}")
+            if len(content) > settings.max_upload_file_size:
+                raise HTTPException(status_code=413, detail=f"Uploaded file is too large: {safe_filename}")
+
             # 用文件内容算 hash，比单纯比较文件名更可靠：
             # 同一份简历即使改了文件名，hash 仍然相同。
             file_hash = hashlib.sha256(content).hexdigest()
@@ -47,12 +59,12 @@ class ResumeService:
                 await self.db.commit()
                 continue
 
-            target_path = target_dir / f"{uuid4()}_{file.filename}"
+            target_path = target_dir / f"{uuid4()}_{safe_filename}"
             await asyncio.to_thread(target_path.write_bytes, content)
 
             resume = Resume(
                 position_id=position_id,
-                file_name=file.filename or target_path.name,
+                file_name=safe_filename,
                 file_hash=file_hash,
                 file_path=str(target_path),
                 file_type=ext,
@@ -65,6 +77,15 @@ class ResumeService:
             uploads.append((resume, False))
 
         return uploads
+
+    def _safe_filename(self, filename: str | None) -> str:
+        # 浏览器正常只会传文件名，但这里仍然做一次净化，避免 ../ 或反斜杠路径混进 uploads。
+        normalized = (filename or "resume").replace("\\", "/")
+        name = PurePosixPath(normalized).name
+        name = re.sub(r"[\x00-\x1f\x7f]", "", name)
+        name = re.sub(r'[<>:"/\\|?*]', "_", name)
+        name = name.strip(" .")
+        return name or "resume"
 
     @classmethod
     async def parse_pending_resumes(cls, resume_ids: list[UUID]) -> None:

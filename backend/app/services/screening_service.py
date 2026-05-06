@@ -4,6 +4,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.logger import logger
 from app.infrastructure.llm import llm_client
 from app.models.database import Resume, ScreeningSession
 from app.models.schemas import (
@@ -87,13 +88,30 @@ class ScreeningService:
                 f"{index}. 姓名：{name}\n简历：{resume.parsed_data}"
             )
 
-        content = await llm_client.complete_text(
-            COMPARE_SYSTEM_PROMPT,
-            f"对比标准：{body.criteria or '综合匹配度'}\n"
-            f"候选人数量：{len(resumes)}\n"
-            f"候选人资料：\n{chr(10).join(resume_blocks)}",
-        )
+        try:
+            content = await llm_client.complete_text(
+                COMPARE_SYSTEM_PROMPT,
+                f"对比标准：{body.criteria or '综合匹配度'}\n"
+                f"候选人数量：{len(resumes)}\n"
+                f"候选人资料：\n{chr(10).join(resume_blocks)}",
+            )
+        except Exception as exc:
+            logger.exception("compare_resumes_llm_failed", error=str(exc))
+            content = self._fallback_compare_summary(resumes, body.criteria)
         return ResumeCompareResponse(summary=content)
+
+    def _fallback_compare_summary(self, resumes: list[Resume], criteria: str | None) -> str:
+        # 候选人对比强依赖 LLM。模型不可用时至少返回结构化字段摘要，避免接口直接失败。
+        lines = [f"LLM 对比暂不可用，以下为基于结构化简历的基础对比。对比标准：{criteria or '综合匹配度'}"]
+        for resume in resumes:
+            parsed = resume.parsed_data or {}
+            name = parsed.get("name") or resume.file_name
+            degree = parsed.get("highest_degree") or "未知学历"
+            work_years = parsed.get("work_years")
+            skills = "、".join(str(item) for item in (parsed.get("skills") or [])[:6]) or "未提取到技能"
+            years_text = f"{work_years} 年经验" if work_years is not None else "经验年限未知"
+            lines.append(f"- {name}：{degree}，{years_text}，技能：{skills}")
+        return "\n".join(lines)
 
     async def generate_interview_questions(self, resume_id: UUID) -> InterviewQuestionsResponse:
         # 出题功能依赖结构化简历 parsed_data，而不是原始 PDF。

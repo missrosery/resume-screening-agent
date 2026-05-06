@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import positions, resumes, screening
 from app.core.config import settings
+from app.core.exceptions import register_exception_handlers
 from app.infrastructure.database import init_db
 
 
@@ -18,6 +19,7 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="Resume Screening Agent", lifespan=lifespan)
+register_exception_handlers(app)
 
 # 浏览器里的前端页面和后端 API 通常不是同一个端口。
 # CORS 中间件负责允许前端从 localhost:3000 等地址调用后端接口。

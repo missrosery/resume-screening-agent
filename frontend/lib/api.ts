@@ -2,6 +2,24 @@ import { InterviewQuestionGroup, Position, Resume, RankedResume, Session } from 
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+async function errorMessage(response: Response): Promise<string> {
+  const text = await response.text();
+  if (!text) {
+    return `Request failed: ${response.status}`;
+  }
+
+  try {
+    const payload = JSON.parse(text) as { detail?: unknown };
+    if (typeof payload.detail === "string") {
+      return payload.detail;
+    }
+  } catch {
+    // Fall back to the raw response body below.
+  }
+
+  return text;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
     ...init,
@@ -9,8 +27,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || `Request failed: ${response.status}`);
+    throw new Error(await errorMessage(response));
   }
 
   if (response.status === 204) {
@@ -42,7 +59,7 @@ export const api = {
       body: form,
     });
     if (!response.ok) {
-      throw new Error(await response.text());
+      throw new Error(await errorMessage(response));
     }
     return response.json() as Promise<Resume[]>;
   },

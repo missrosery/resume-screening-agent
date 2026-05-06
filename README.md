@@ -204,6 +204,16 @@ npm install
 npm run dev
 ```
 
+### Backend Tests
+
+```powershell
+cd E:\code\ai-agent-resume\backend
+pip install -r requirements-dev.txt
+pytest
+```
+
+The current tests cover request validation, upload error handling, resume text cleanup, vector document construction, LLM compare fallback, and consistent API error responses.
+
 ### Option B: Docker Compose
 
 ```bash
@@ -223,6 +233,7 @@ Important variables:
 - `LLM_MODEL`
 - `EMBEDDING_MODEL`
 - `UPLOAD_DIR`
+- `MAX_UPLOAD_FILE_SIZE`
 - `CORS_ORIGINS`
 
 Production deployment uses:
